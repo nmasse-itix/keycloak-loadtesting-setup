@@ -1,0 +1,3 @@
+enable_https: no
+enable_ldap: no
+database: postgresql

@@ -1,0 +1,20 @@
+dn: ou=users,dc=keycloak,dc=org
+objectclass: top
+objectclass: organizationalUnit
+ou: users
+
+{% for i in range(openldap_users_count) %}
+{% set id = "%06d" |format(i) %}
+dn: uid=user_{{ id }},ou=users,dc=keycloak,dc=org
+objectclass: top
+objectclass: person
+objectclass: organizationalPerson
+objectclass: inetOrgPerson
+uid: user_{{ id }}
+cn: User {{ id }}
+sn: {{ id }}
+givenName: User
+mail: user_{{ id }}@nowhere.test
+userPassword: user_{{ id }}
+
+{% endfor %}

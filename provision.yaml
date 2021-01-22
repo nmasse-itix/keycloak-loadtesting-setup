@@ -1,0 +1,283 @@
+- name: Prepare the SUT (System Under Test)
+  hosts: sut
+  tasks:
+  - assert:
+      that:
+      - enable_ldap is defined
+      - enable_https is defined
+      - database is defined
+      msg: >-
+        specify the scenario to provision as extra vars (using -e '@scenarios/foo.yaml')
+
+  - dnf:
+      name:
+      - podman
+      - podman-plugins
+      - openldap-clients
+      state: installed
+
+  - name: Inspect the default network created by podman
+    command: podman network inspect podman
+    register: podman_network_inspect
+    changed_when: false
+
+  - name: Check if the default network needs to be patched to add the "dnsname" plugin
+    set_fact:
+      podman_default_network_needs_patch: '{{ "dnsname" not in network_plugins }}'
+    vars:
+      network_plugins: '{{ podman_network_inspect.stdout | from_json | json_query("[0].plugins[].type") | list }}'
+
+  - name: Remove the default podman network
+    containers.podman.podman_network:
+      name: podman
+      state: absent
+    when: podman_default_network_needs_patch
+
+  - name: Re-create the default podman network (with the "dnsname" plugin)
+    containers.podman.podman_network:
+      name: podman
+      state: present
+      subnet: 10.88.0.0/16
+    when: podman_default_network_needs_patch
+
+  - name: Cleanup containers
+    containers.podman.podman_container:
+      name: '{{ item }}'
+      state: absent
+    loop:
+    - traefik
+    - keycloak-server-1
+    - keycloak-server-2
+    - postgresql
+    - mariadb
+    - openldap
+
+  - stat:
+      path: /srv/openldap/data
+    register: data
+    when: enable_ldap|bool
+
+  - name: Backup /srv/openldap/data if present
+    command: 
+      cmd: "mv /srv/openldap/data /srv/openldap/data-{{ name }}"
+    vars:
+      name: "{{ lookup('pipe','date +%Y%m%d-%H%M%S') }}"
+    when: enable_ldap|bool  and data.stat.exists 
+
+  - name: Re-create /srv/openldap/data
+    file:
+      path: /srv/openldap/data/{{ item }}
+      state: directory
+      owner: root
+      group: root
+      mode: 0777
+    when: enable_ldap|bool
+    loop:
+    - db
+    - schema
+    - ldif
+
+  - name: Drop the initial LDIF into /srv/openldap/data/ldif
+    template:
+      src: files/users.ldif.j2
+      dest: /srv/openldap/data/ldif/users.ldif
+      owner: root
+      group: root
+      mode: 0777
+    when: enable_ldap|bool
+
+  - name: Install OpenLDAP
+    containers.podman.podman_container:
+      name: openldap
+      image: '{{ openldap_image }}'
+      state: started
+      cpuset_cpus: 0,4
+      command:
+      - --copy-service
+      #- --loglevel
+      #- debug
+      env:
+        LDAP_ORGANISATION: Keycloak
+        LDAP_DOMAIN: keycloak.org
+        LDAP_ADMIN_PASSWORD: keycloak
+      volume:
+      - '/srv/openldap/data/db:/var/lib/ldap:z'
+      - '/srv/openldap/data/schema:/etc/ldap/slapd.d:z'
+      - '/srv/openldap/data/ldif:/container/service/slapd/assets/config/bootstrap/ldif/custom:z'
+    when: enable_ldap|bool
+
+  - stat:
+      path: /srv/postgresql/data
+    register: data
+    when: database == 'postgresql'
+
+  - name: Backup /srv/postgresql/data if present
+    command: 
+      cmd: "mv /srv/postgresql/data /srv/postgresql/data-{{ name }}"
+    vars:
+      name: "{{ lookup('pipe','date +%Y%m%d-%H%M%S') }}"
+    when: database == 'postgresql' and data.stat.exists 
+
+  - name: Re-create /srv/postgresql/data
+    file:
+      path: /srv/postgresql/data
+      state: directory
+      owner: root
+      group: root
+      mode: 0777
+    when: database == 'postgresql'
+
+  - stat:
+      path: /srv/mariadb/data
+    register: data
+    when: database == 'mariadb'
+
+  - name: Backup /srv/mariadb/data if present
+    command: 
+      cmd: "mv /srv/mariadb/data /srv/mariadb/data-{{ name }}"
+    vars:
+      name: "{{ lookup('pipe','date +%Y%m%d-%H%M%S') }}"
+    when: database == 'mariadb' and data.stat.exists
+
+  - name: Re-create /srv/mariadb/data
+    file:
+      path: /srv/mariadb/data
+      state: directory
+      owner: root
+      group: root
+      mode: 0777
+    when: database == 'mariadb'
+
+  - name: Install PostgreSQL (Docker version)
+    containers.podman.podman_container:
+      name: postgresql
+      image: '{{ postgresql_image }}'
+      state: started
+      memory: 4g
+      cpuset_cpus: 3,7
+      env:
+        POSTGRES_USER: keycloak
+        POSTGRES_PASSWORD: keycloak
+        POSTGRES_DB: keycloak # Docker version
+      volume:
+      - '/srv/postgresql/data:/var/lib/postgresql/data:z' # Docker version
+    when: >
+      database == 'postgresql' and 'docker.io/postgres:' in postgresql_image
+
+  - name: Install PostgreSQL (SCL version)
+    containers.podman.podman_container:
+      name: postgresql
+      image: '{{ postgresql_image }}'
+      state: started
+      cpuset_cpus: 3,7
+      memory: 4g
+      env:
+        POSTGRESQL_USER: keycloak
+        POSTGRESQL_PASSWORD: keycloak
+        POSTGRESQL_DATABASE: keycloak # SCL version
+      volume:
+      - '/srv/postgresql/data:/var/lib/pgsql/data:z' # SCL version
+    when: >
+      database == 'postgresql' and postgresql_image |regex_search("quay.io/centos./postgresql-.*:")
+
+  - name: Install MariaDB
+    containers.podman.podman_container:
+      name: mariadb
+      image: '{{ mariadb_image }}'
+      state: started
+      cpuset_cpus: 3,7
+      memory: 4g
+      env:
+        MYSQL_USER: keycloak
+        MYSQL_PASSWORD: keycloak
+        MYSQL_DATABASE: keycloak
+      volume:
+      - '/srv/mariadb/data:/var/lib/mysql/data:z'
+    when: >
+      database == 'mariadb'
+
+  - name: Remove /etc/keycloak
+    file:
+      path: /etc/keycloak
+      state: absent
+
+  - name: Re-create /etc/keycloak
+    file:
+      path: /etc/keycloak
+      state: directory
+      owner: root
+      group: root
+      mode: 0755
+
+  - name: Install Keycloak
+    containers.podman.podman_container:
+      name: '{{ item.name }}'
+      image: '{{ keycloak_image }}'
+      state: started
+      cpuset_cpus: '{{ item.cpuset }}'
+      env: '{{ common_env | combine(db_env) }}'
+      volume:
+      - '/etc/keycloak:/etc/keycloak:z'
+    loop:
+    - name: keycloak-server-1
+      cpuset: 1,5
+    - name: keycloak-server-2
+      cpuset: 2,6
+    vars:
+      db_env: '{{ postgres_env if database == "postgresql" else mariadb_env }}'
+      mariadb_env:
+        DB_VENDOR: mariadb
+        DB_ADDR: mariadb.dns.podman
+      postgres_env:
+        DB_VENDOR: postgres
+        DB_ADDR: postgresql.dns.podman
+      common_env:
+        DB_USER: keycloak
+        DB_PASSWORD: keycloak
+        DB_DATABASE: keycloak
+        KEYCLOAK_USER: '{{ keycloak_admin_username }}'
+        KEYCLOAK_PASSWORD: '{{ keycloak_admin_password }}'
+        PROXY_ADDRESS_FORWARDING: 'true'
+
+  - name: Remove /etc/traefik
+    file:
+      path: /etc/traefik
+      state: absent
+
+  - name: Re-create /etc/traefik
+    file:
+      path: /etc/traefik/conf.d
+      state: directory
+      owner: root
+      group: root
+      mode: 0755
+
+  - name: Install the traefik configuration files
+    template:
+      src: files/traefik.yaml.j2
+      dest: /etc/traefik/traefik.yaml
+
+  - name: Install the traefik configuration files
+    template:
+      src: files/keycloak.yaml.j2
+      dest: /etc/traefik/conf.d/keycloak.yaml
+
+  - name: Install Traefik
+    containers.podman.podman_container:
+      name: traefik
+      image: '{{ traefik_image }}'
+      state: started
+      cpuset_cpus: 0,4
+      ports:
+      - 80:8080
+      volume:
+      - '/etc/traefik:/etc/traefik:z'
+
+  - name: Wait for Keycloak to get ready
+    uri:
+      url: http://{{ inventory_hostname }}/auth/realms/master/.well-known/openid-configuration
+      timeout: 10
+    retries: 20
+    delay: 5
+    register: healthcheck
+    until: not healthcheck.failed

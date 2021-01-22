@@ -1,0 +1,9 @@
+keycloak_admin_username: admin
+keycloak_admin_password: admin
+traefik_image: docker.io/traefik:v2.3.4
+keycloak_image: docker.io/jboss/keycloak:11.0.3
+postgresql_image: quay.io/centos7/postgresql-10-centos7:latest
+#postgresql_image: docker.io/postgres:11.5-alpine
+mariadb_image: quay.io/centos7/mariadb-103-centos7:latest
+openldap_image: osixia/openldap:1.4.0
+

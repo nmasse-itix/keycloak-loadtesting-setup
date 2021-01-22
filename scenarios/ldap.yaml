@@ -1,0 +1,4 @@
+enable_https: no
+enable_ldap: yes
+database: postgresql
+openldap_users_count: 1000000

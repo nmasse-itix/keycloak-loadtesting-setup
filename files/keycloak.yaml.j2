@@ -1,0 +1,13 @@
+http:
+  routers:
+    keycloak:
+      rule: PathPrefix(`/auth`)
+      entryPoints:
+        - http
+      service: "keycloak"
+  services:
+    keycloak:
+      loadBalancer:
+        servers:
+        - url: "http://keycloak-server-1.dns.podman:8080"
+        - url: "http://keycloak-server-2.dns.podman:8080"
