@@ -6,6 +6,8 @@
       - enable_ldap is defined
       - enable_https is defined
       - database is defined
+      - keycloak_env is defined
+      - keycloak_instances is defined
       msg: >-
         specify the scenario to provision as extra vars (using -e '@scenarios/foo.yaml')
 
@@ -215,14 +217,10 @@
       image: '{{ keycloak_image }}'
       state: started
       cpuset_cpus: '{{ item.cpuset }}'
-      env: '{{ common_env | combine(db_env) }}'
+      env: '{{ common_env | combine(db_env) | combine(keycloak_env) }}'
       volume:
       - '/etc/keycloak:/etc/keycloak:z'
-    loop:
-    - name: keycloak-server-1
-      cpuset: 1,5
-    - name: keycloak-server-2
-      cpuset: 2,6
+    loop: '{{ keycloak_instances }}'
     vars:
       db_env: '{{ postgres_env if database == "postgresql" else mariadb_env }}'
       mariadb_env:

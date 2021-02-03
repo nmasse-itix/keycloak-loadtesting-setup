@@ -1,2 +1,2 @@
 [sut]
-hp-microserver.itix.fr ansible_become=yes ansible_user=nicolas
+my-server.example ansible_become=yes ansible_user=john

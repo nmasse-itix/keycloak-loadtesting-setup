@@ -1,4 +1,12 @@
 enable_https: no
 enable_ldap: yes
 database: postgresql
-openldap_users_count: 1000000
+openldap_users_count: 100000
+keycloak_instances:
+- name: keycloak-server-1
+  cpuset: 1,5
+- name: keycloak-server-2
+  cpuset: 2,6
+keycloak_env:
+  CACHE_OWNERS_COUNT: '2'
+  CACHE_OWNERS_AUTH_SESSIONS_COUNT: '2'
