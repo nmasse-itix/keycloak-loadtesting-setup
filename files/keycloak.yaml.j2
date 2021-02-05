@@ -9,5 +9,6 @@ http:
     keycloak:
       loadBalancer:
         servers:
-        - url: "http://keycloak-server-1.dns.podman:8080"
-        - url: "http://keycloak-server-2.dns.podman:8080"
+{% for i in keycloak_instances %}
+        - url: "http://{{ i.name }}.dns.podman:8080"
+{% endfor %}
