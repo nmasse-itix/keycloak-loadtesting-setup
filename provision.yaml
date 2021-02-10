@@ -180,7 +180,7 @@
       volume:
       - '/srv/postgresql/data:/var/lib/pgsql/data:z' # SCL version
     when: >
-      database == 'postgresql' and postgresql_image |regex_search("quay.io/centos./postgresql-.*:")
+      database == 'postgresql' and postgresql_image |regex_search("(quay.io/centos./postgresql-.*|registry.redhat.io/rhscl/postgresql-.*):")
 
   - name: Install MariaDB
     containers.podman.podman_container:

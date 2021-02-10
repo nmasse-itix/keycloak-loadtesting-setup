@@ -1,7 +1,7 @@
 enable_https: no
 enable_ldap: yes
 database: postgresql
-openldap_users_count: 100000
+openldap_users_count: 10000
 keycloak_instances:
 - name: keycloak-server-1
   cpuset: 1,5
